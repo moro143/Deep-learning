@@ -1,3 +1,6 @@
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
 import numpy as np
 from tensorflow.keras.applications.resnet50 import (
     ResNet50,
@@ -9,8 +12,7 @@ from tensorflow.keras.applications.efficientnet import (
 )
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.imagenet_utils import decode_predictions
-from keras_vit.vit import ViT_B16
-from keras_vit import preprocess_inputs as preprocess_inputs_vit
+from keras.applications.vgg16 import VGG16, preprocess_input, decode_predictions
 
 
 def predict_resnet(img):
@@ -35,19 +37,12 @@ def predict_efficientnet(img):
     return decode_predictions(preds)
 
 
-def predict_ViT(img):
+def predict_vgg16(img):
     image_obj = img.resize((224, 224))
-    model = ViT_B16(
-        image_size=224,
-        activation="softmax",
-        pretrained=True,
-        include_top=True,
-        pretrained_top=True,
-    )
-
+    model = VGG16(weights='imagenet')
     x = image.img_to_array(image_obj)
     x = np.expand_dims(x, axis=0)
-    x = preprocess_inputs_vit(x)
+    x = preprocess_input(x)
+
     preds = model.predict(x, verbose=0)
-    decoded_predictions = decode_predictions(preds, top=5)
-    return decoded_predictions
+    return decode_predictions(preds)
