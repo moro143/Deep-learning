@@ -1,12 +1,8 @@
-from models import predict_vgg16, predict_resnet, predict_efficientnet
-import matplotlib.pyplot as plt
-from xai_methods import lime
 import traceback
-from torch.nn.functional import softmax
-from PIL import Image
-from tensorflow.keras.preprocessing import image as keras_image
-from tensorflow.keras.applications.efficientnet import EfficientNetB0, preprocess_input, decode_predictions
+from models import ResNetPredict, EfficientNetPredict, Vgg16Predict
+import matplotlib.pyplot as plt
 import numpy as np
+from skimage.segmentation import mark_boundaries
 
 
 def check_num_classes(dataset, target_num_classes=30):
@@ -21,50 +17,74 @@ def check_num_classes(dataset, target_num_classes=30):
 
 def main_loop(dset, selected_indices):
     e = 0
-    def fuc(images):
-        model = EfficientNetB0(weights='imagenet')
-        processed_images = []
-        for img in images:
-            if not isinstance(img, Image.Image):
-                img = Image.fromarray(img)
-            img_resized = img.resize((224, 224))
-            x = keras_image.img_to_array(img_resized)
-            x = preprocess_input(x)
-            processed_images.append(x)
-        processed_images = np.array(processed_images)
-        preds = model.predict(processed_images, verbose=0)
-        return preds
+    models = {
+        'ResNet': ResNetPredict(),
+        'EfficientNet': EfficientNetPredict(),
+        'Vgg': Vgg16Predict()
+    }
+    print(models['ResNet'].random_numbers)
     for i in dset:
+        if i['label'] not in models['ResNet'].random_numbers:
+            print('not', i)
+            continue
+        print('yes', i)
         try:
             img = i["image"]
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 12))
+            model_idx = 1
+            predictions = {}
+            for name, model in models.items():
+                print(f'Starting - {name}')
+                predictions[name] = model.predict_readable(img)
+                print(model.predict_readable(img))
+                try:
+                    cam_image = model.cam(img)/255
+                except:
+                    cam_image=None
+                try:
+                    grad_cam_image = model.cam(img)/255
+                except:
+                    grad_cam_image=None
+                overlayed_image, masked_image = model.lime_explain(img)
+                num = 4
+                
+                try:
+                    plt.subplot(len(models), num, model_idx)
+                    plt.imshow(overlayed_image)
+                    plt.title(f"{name} - LIME Explanation")
+                    plt.axis("off")
+                except:
+                    print('Plot 1')
 
-            ax1.imshow(i["image"])
-            ax1.axis('off')
+                try:
+                    plt.subplot(len(models), num, model_idx + 1)
+                    plt.imshow(masked_image)
+                    plt.title(f"{name} - LIME Explanation (mask)")
+                    plt.axis("off")
+                except:
+                    print('Plot 2')
 
-            # predicitons
-            vgg_pred = str(predict_vgg16(img, selected_indices))
-            resnet_pred = str(predict_resnet(img, selected_indices))
-            efficientnet_pred = str(predict_efficientnet(img, selected_indices))
+                try:
+                    plt.subplot(len(models), num, model_idx + 2)
+                    plt.imshow(cam_image)
+                    plt.title(f"{name} - CAM")
+                    plt.axis("off")
+                except:
+                    print('Plot 3')
 
-            prediction_text = (f"VGG Prediction: {vgg_pred}\n"
-                               f"ResNet Prediction: {resnet_pred}\n"
-                               f"EfficientNet Prediction: {efficientnet_pred}")
+                try:
+                    plt.subplot(len(models), num, model_idx + 3)
+                    plt.imshow(grad_cam_image)
+                    plt.title(f"{name} - Grad-CAM")
+                    plt.axis("off")
+                except:
+                    print('Plot 4')
 
-            ax2.text(0.5, 0.5, prediction_text, ha='center', va='center', fontsize=10, wrap=True)
-            ax2.axis('off')
-
-            # lime imgs
-            lime_vgg = lime(img, fuc)
-            print(lime_vgg)
-            plt.imshow(lime_vgg)
-            plt.axis('off')
+                model_idx += num
+                print(f'Finished - {name}')
             plt.show()
-            plt.tight_layout()
-            plt.show()
-
+   
         except Exception as ex:
-            print(traceback.format_exc())
+            traceback.print_exc()
             print(f"Error {e}")
             print(ex)
             e += 1

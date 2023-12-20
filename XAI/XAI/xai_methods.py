@@ -2,6 +2,8 @@ import numpy as np
 from lime import lime_image
 from lime.wrappers.scikit_image import SegmentationAlgorithm
 from skimage.segmentation import mark_boundaries
+from keras.preprocessing.image import img_to_array
+from skimage.segmentation import mark_boundaries
 
 
 def normalize_img(img):
@@ -28,5 +30,6 @@ def lime(img, model):
     temp, mask = explanation.get_image_and_mask(explanation.top_labels[0], positive_only=True, num_features=5, hide_rest=False)
 
     overlayed_image = mark_boundaries(temp, mask)
+    masked_image = temp * mask[:, :, np.newaxis]
+    return overlayed_image, masked_image
 
-    return overlayed_image
