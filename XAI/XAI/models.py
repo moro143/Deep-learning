@@ -18,16 +18,17 @@ from tensorflow.keras.applications.efficientnet import (
     decode_predictions as decode_predictions_efficientnet
 )
 from keras.applications.vgg16 import preprocess_input, decode_predictions
-import traceback
 from lime import lime_image
 from skimage.segmentation import mark_boundaries
 import matplotlib.pyplot as plt
 from tensorflow.keras.preprocessing import image as keras_image
 from tensorflow.keras import models
-import shap
 import random
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
 
-random.seed(98)
+
+random.seed(2023)
 rn = [random.randint(0, 999) for _ in range(30)]
 class BasePredict:
     def __init__(self):
@@ -37,42 +38,45 @@ class BasePredict:
         self.layer_cam = None
         self.random_numbers = rn
 
-    def predict(self, img):
+    def normalize_image(self, img):
+        if not isinstance(img, Image.Image):
+            img = Image.fromarray(img)
         img = img.resize((224, 224))
-        x = image.img_to_array(img)
+        x = keras_image.img_to_array(img)
         x = np.expand_dims(x, axis=0)
-        x = self.preprocess_input(x)
-        preds = self.model.predict(x, verbose=0)
+        return x
+
+    def predict(self, img):
+        img = self.normalize_image(img)
+        img = self.preprocess_input(img)
+        preds = self.model.predict(img, verbose=0)
         for i in range(len(preds[0])):
             if i not in self.random_numbers:
                 preds[0][i] = 0.0
-            else:
-                print(i)
         return preds
     
     def predict_images(self, images):
         processed_images = []
+        preds = []
         for img in images:
-            if not isinstance(img, Image.Image):
-                img = Image.fromarray(img)
-            img_resized = img.resize((224, 224))
-            x = keras_image.img_to_array(img_resized)
+            x = self.normalize_image(img)
             x = self.preprocess_input(x)
             processed_images.append(x)
+            y = self.predict(img)
+            preds.append(self.predict(img)[0])
         processed_images = np.array(processed_images)
-        preds = self.model.predict(processed_images, verbose=0)
         return preds
 
-    def lime_explain(self, img, top_labels=5):
+    def lime_explain(self, img):
         explainer = lime_image.LimeImageExplainer()
-        explanation = explainer.explain_instance(np.array(img), 
-                                                 self.predict_images)
+        explanation = explainer.explain_instance(np.array(img), self.predict_images, num_samples=100, top_labels=15)
         temp, mask = explanation.get_image_and_mask(explanation.top_labels[0])
         overlayed_image = mark_boundaries(temp, mask)
         masked_image = temp * mask[:, :, np.newaxis]
         return overlayed_image, masked_image
 
     def cam(self, img):
+        #x = self.normalize_image(img)
         img_resized = img.resize((224, 224))
         x = keras_image.img_to_array(img_resized)
         x = np.expand_dims(x, axis=0)
@@ -161,5 +165,19 @@ class Vgg16Predict(BasePredict):
         self.model = VGG16(weights="imagenet")
         self.preprocess_input = preprocess_input
         self.decode_predictions = decode_predictions
-        self.layer_cam = 'block2_conv2'
+        self.layer_cam = 'block5_conv3'
 
+class InceptionV3Predict(BasePredict):
+    def __init__(self):
+        BasePredict.__init__(self)
+        self.model = InceptionV3(weights="imagenet")
+        self.preprocess_input = preprocess_input_inception
+        self.decode_predictions = decode_predictions_inception
+        self.layer_cam = 'mixed10'
+    def normalize_image(self, img):
+        if not isinstance(img, Image.Image):
+            img = Image.fromarray(img)
+        img = img.resize((299, 299))
+        x = keras_image.img_to_array(img)   # to zmieniales
+        x = np.expand_dims(x, axis=0)
+        return x

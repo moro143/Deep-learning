@@ -3,5 +3,5 @@ from utils import main_loop
 
 
 if __name__ == "__main__":
-    dset, classes = load_data()
-    main_loop(dset, classes)
+    dset = load_data()
+    main_loop(dset)
