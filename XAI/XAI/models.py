@@ -27,7 +27,6 @@ import random
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
 
-
 random.seed(2023)
 rn = [random.randint(0, 999) for _ in range(30)]
 class BasePredict:
@@ -37,7 +36,6 @@ class BasePredict:
         self.decode_predictions = None
         self.layer_cam = None
         self.random_numbers = rn
-
     def normalize_image(self, img):
         if not isinstance(img, Image.Image):
             img = Image.fromarray(img)
@@ -69,14 +67,54 @@ class BasePredict:
 
     def lime_explain(self, img):
         explainer = lime_image.LimeImageExplainer()
-        explanation = explainer.explain_instance(np.array(img), self.predict_images, num_samples=100, top_labels=15)
+        explanation = explainer.explain_instance(np.array(img), self.predict_images, num_samples=100, top_labels=1)
         temp, mask = explanation.get_image_and_mask(explanation.top_labels[0])
         overlayed_image = mark_boundaries(temp, mask)
         masked_image = temp * mask[:, :, np.newaxis]
-        return overlayed_image, masked_image
+        return overlayed_image, masked_image, mask
+
+    def grad_camv2(self, img, layer_name="conv5_block3_out"):
+        # Przetwarzanie obrazu
+        img_array = self.normalize_image(img)
+        img_tensor = tf.convert_to_tensor(self.preprocess_input(img_array))
+
+        # Uzyskanie modelu
+        model = self.model
+
+        # Pobranie warstwy, dla której ma być wykonany Grad-CAM
+        conv_layer = model.get_layer(layer_name)
+        grad_model = tf.keras.models.Model([model.inputs], [conv_layer.output, model.output])
+
+        # Obliczenie gradientów
+        with tf.GradientTape() as tape:
+            conv_outputs, predictions = grad_model(img_tensor)
+            loss = predictions[:, tf.argmax(predictions[0])]
+
+        grads = tape.gradient(loss, conv_outputs)
+
+        # Obliczenie ważonych średnich gradientów
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+
+        # Dostęp do wyjść warstwy
+        conv_outputs = conv_outputs[0]
+
+        # Ważenie kanałów wyjściowych warstwy
+        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap)
+
+        # Normalizacja mapy cieplnej
+        heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+        heatmap = heatmap.numpy()
+
+        # Superpozycja mapy cieplnej na obraz
+        heatmap = cv2.resize(heatmap, (img.width, img.height))
+        heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+        superimposed_img = cv2.addWeighted(np.uint8(img), 0.6, heatmap_color, 0.4, 0)
+
+        return superimposed_img, heatmap
 
     def cam(self, img):
-        #x = self.normalize_image(img)
+        # x = self.normalize_image(img)
         img_resized = img.resize((224, 224))
         x = keras_image.img_to_array(img_resized)
         x = np.expand_dims(x, axis=0)
