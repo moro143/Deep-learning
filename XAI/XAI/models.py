@@ -26,6 +26,7 @@ from tensorflow.keras import models
 import random
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
+import  shap
 
 random.seed(2023)
 rn = [random.randint(0, 999) for _ in range(30)]
@@ -73,113 +74,63 @@ class BasePredict:
         masked_image = temp * mask[:, :, np.newaxis]
         return overlayed_image, masked_image, mask
 
-    def grad_camv2(self, img, layer_name="conv5_block3_out"):
-        # Przetwarzanie obrazu
+    def grad_camv2(self, img):
+        layer_name = self.layer_cam
         img_array = self.normalize_image(img)
         img_tensor = tf.convert_to_tensor(self.preprocess_input(img_array))
 
-        # Uzyskanie modelu
         model = self.model
 
-        # Pobranie warstwy, dla której ma być wykonany Grad-CAM
         conv_layer = model.get_layer(layer_name)
         grad_model = tf.keras.models.Model([model.inputs], [conv_layer.output, model.output])
 
-        # Obliczenie gradientów
         with tf.GradientTape() as tape:
             conv_outputs, predictions = grad_model(img_tensor)
             loss = predictions[:, tf.argmax(predictions[0])]
 
         grads = tape.gradient(loss, conv_outputs)
 
-        # Obliczenie ważonych średnich gradientów
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
-        # Dostęp do wyjść warstwy
         conv_outputs = conv_outputs[0]
 
-        # Ważenie kanałów wyjściowych warstwy
         heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
 
-        # Normalizacja mapy cieplnej
         heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
         heatmap = heatmap.numpy()
 
-        # Superpozycja mapy cieplnej na obraz
         heatmap = cv2.resize(heatmap, (img.width, img.height))
         heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
         superimposed_img = cv2.addWeighted(np.uint8(img), 0.6, heatmap_color, 0.4, 0)
 
         return superimposed_img, heatmap
 
-    def cam(self, img):
-        # x = self.normalize_image(img)
-        img_resized = img.resize((224, 224))
-        x = keras_image.img_to_array(img_resized)
-        x = np.expand_dims(x, axis=0)
-        x = self.preprocess_input(x)
-
-        model_output = self.model.predict(x)
-        last_conv_layer = self.model.get_layer(self.layer_cam)
-        last_conv_model = models.Model(self.model.inputs, last_conv_layer.output)
-        last_conv_output = last_conv_model.predict(x)
-
-        output_weights = self.model.get_layer('predictions').get_weights()[0]
-        class_idx = np.argmax(model_output[0])
-        class_output_weights = output_weights[:, class_idx]
-
-        cam_output = np.dot(last_conv_output[0], class_output_weights)
-        cam_output = cv2.resize(cam_output, (224, 224))
-        cam_output = np.maximum(cam_output, 0)
-        heatmap = cam_output / np.max(cam_output)
-
-        original_img = np.array(img_resized)
-        heatmap = np.uint8(255 * heatmap)
-        heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        superimposed_img = heatmap * 0.4 + original_img
-        return superimposed_img
-
-    def grad_cam(self, img, layer_name=None):
-        if layer_name is None:
-            layer_name = self.layer_cam
-
-        img_resized = img.resize((224, 224))
-        x = keras_image.img_to_array(img_resized)
-        x = np.expand_dims(x, axis=0)
-        x = self.preprocess_input(x)
-
-        grad_model = tf.keras.models.Model(
-            [self.model.inputs],
-            [self.model.get_layer(layer_name).output, self.model.output]
-        )
+    def generate_saliency_map(self, img):
+        img_array = self.normalize_image(img)
+        img_tensor = tf.convert_to_tensor(self.preprocess_input(img_array))
 
         with tf.GradientTape() as tape:
-            conv_outputs, predictions = grad_model(x)
-            class_idx = tf.argmax(predictions[0])
-            loss = predictions[:, class_idx]
+            tape.watch(img_tensor)
+            predictions = self.model(img_tensor)
+            loss = tf.reduce_max(predictions)
 
-        grads = tape.gradient(loss, conv_outputs)
+        grads = tape.gradient(loss, img_tensor)[0]
 
-        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        # Normalize gradients
+        grads = (grads - tf.reduce_min(grads)) / (tf.reduce_max(grads) - tf.reduce_min(grads))
+        grads = tf.squeeze(grads).numpy()
 
-        conv_outputs = conv_outputs[0]
-        conv_outputs = conv_outputs @ pooled_grads[..., tf.newaxis]
-        conv_outputs = tf.squeeze(conv_outputs)
-
-        heatmap = tf.maximum(conv_outputs, 0) / tf.math.reduce_max(conv_outputs)
-
-        heatmap = np.uint8(255 * heatmap.numpy())
-        heatmap = cv2.resize(heatmap, (img_resized.width, img_resized.height))
-        heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-
-        superimposed_img = heatmap * 0.4 + np.array(img_resized)
-        superimposed_img = np.uint8(superimposed_img)
-
-        return superimposed_img
+        # Convert to grayscale
+        grayscale_saliency = np.dot(grads, [0.2989, 0.5870, 0.1140])
+        
+        # Rescale to original image size
+        saliency_map = cv2.resize(grayscale_saliency, (img.width, img.height))
+        return saliency_map
     
     def predict_readable(self, img):
         return self.decode_predictions(self.predict(img))
+    
 
 class ResNetPredict(BasePredict):
     def __init__(self):

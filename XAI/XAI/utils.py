@@ -3,6 +3,7 @@ from models import ResNetPredict, EfficientNetPredict, Vgg16Predict, InceptionV3
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import csv
 
 def main_loop(dset):
     e = 0
@@ -22,19 +23,32 @@ def main_loop(dset):
             predictions = {}
             plt.figure(figsize=(15, 10))
             for name, model in models.items():
+                saliency_map = model.generate_saliency_map(img)
+                # Display the original image and the saliency map side by side
+                plt.figure(figsize=(12, 6))
+
+                plt.subplot(1, 2, 1)
+                plt.imshow(img)
+                plt.title('Original Image')
+                plt.axis('off')
+
+                plt.subplot(1, 2, 2)
+                plt.imshow(saliency_map, cmap='hot')
+                plt.title('Saliency Map')
+                plt.axis('off')
+
+                plt.show()
                 print(f'Starting - {name}')
                 predictions[name] = model.predict_readable(img)
                 print(predictions[name])
-
                 grad_cam_image, heatmap = model.grad_camv2(img)
-                threshold = heatmap.max() / 4
+                threshold = 0.1
                 overlayed_image, masked_image_lime, mask = model.lime_explain(img)
                 masked_image_grad_cam = np.where(heatmap >= threshold, 1, 0)
                 print(masked_image_grad_cam)
                 print('------------------')
                 print(mask)
                 print(f'Max masked_image_lime: {mask.max()}')
-
 
                 intersection = np.logical_and(mask, masked_image_grad_cam)
                 union = np.logical_or(mask, masked_image_grad_cam)
@@ -54,9 +68,8 @@ def main_loop(dset):
                 plt.axis("off")
 
                 plt.subplot(len(models), num, model_idx + 2)
-                #plt.imshow(grad_cam_image)
                 plt.imshow(masked_image_grad_cam)
-                plt.title(f"{name} - Grad CAM")
+                plt.title(f"{name} - Binary Grad CAM")
                 plt.axis("off")
 
                 plt.subplot(len(models), num, model_idx + 3)
@@ -65,7 +78,29 @@ def main_loop(dset):
                 plt.axis("off")
                 model_idx += num
                 print(f'Finished - {name}')
+
+                for i in range(10):
+                    threshold_tmp = i*threshold
+                    masked_image_grad_cam = np.where(heatmap >= threshold_tmp, 1, 0)
+                    intersection = np.logical_and(mask, masked_image_grad_cam)
+                    union = np.logical_or(mask, masked_image_grad_cam)
+                    iou_score = np.sum(intersection) / np.sum(union)
+                    data_to_save = {
+                        'image': f'{c}.png',
+                        'IOU score': iou_score,
+                        'threshold': threshold_tmp,
+                        'prediction': predictions[name][0][0][1],
+                        'model': name,
+                    }
+
+                    csv_file_name = 'data.csv'
+
+                    with open(csv_file_name, 'a', newline='') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=data_to_save.keys())
+                        writer.writerow(data_to_save)
+                
             plt.savefig(f'images/{c}.png')
+            
             c += 1
 
         except Exception as ex:
