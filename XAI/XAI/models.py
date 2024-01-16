@@ -26,8 +26,9 @@ from tensorflow.keras import models
 import random
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
-import  shap
+import innvestigate
 
+tf.compat.v1.disable_eager_execution()
 random.seed(2023)
 rn = [random.randint(0, 999) for _ in range(30)]
 class BasePredict:
@@ -123,10 +124,21 @@ class BasePredict:
 
         # Convert to grayscale
         grayscale_saliency = np.dot(grads, [0.2989, 0.5870, 0.1140])
-        
         # Rescale to original image size
         saliency_map = cv2.resize(grayscale_saliency, (img.width, img.height))
         return saliency_map
+
+    def use_innvestigate(self, img):
+        model = innvestigate.model_wo_softmax(self.model)
+        analizer = innvestigate.create_analyzer("deep_taylor", model)
+        x = self.preprocess_input(self.normalize_image(img))
+        a = analizer.analyze(x)
+
+        a = a.sum(axis=np.argmax(np.asarray(a.shape)==3))
+        a /= np.max(np.abs(a))
+        plt.imshow(a[0], cmap="seismic", clim=(-1, 1))
+        return a
+
     
     def predict_readable(self, img):
         return self.decode_predictions(self.predict(img))
