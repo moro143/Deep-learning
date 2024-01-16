@@ -27,8 +27,10 @@ import random
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
 import innvestigate
+import shap
 
 tf.compat.v1.disable_eager_execution()
+tf.compat.v1.disable_v2_behavior()
 random.seed(2023)
 rn = [random.randint(0, 999) for _ in range(30)]
 class BasePredict:
@@ -99,7 +101,8 @@ class BasePredict:
         heatmap = tf.squeeze(heatmap)
 
         heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
-        heatmap = heatmap.numpy()
+        #heatmap = heatmap.numpy()
+        heatmap = tf.keras.backend.eval(heatmap)
 
         heatmap = cv2.resize(heatmap, (img.width, img.height))
         heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
@@ -136,10 +139,9 @@ class BasePredict:
 
         a = a.sum(axis=np.argmax(np.asarray(a.shape)==3))
         a /= np.max(np.abs(a))
-        plt.imshow(a[0], cmap="seismic", clim=(-1, 1))
+        a = cv2.resize(a[0], (img.width, img.height))
         return a
 
-    
     def predict_readable(self, img):
         return self.decode_predictions(self.predict(img))
     
