@@ -27,12 +27,11 @@ import random
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_input_inception, decode_predictions as decode_predictions_inception
 import innvestigate
-import shap
 
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.disable_v2_behavior()
 random.seed(2023)
-rn = [random.randint(0, 999) for _ in range(30)]
+rn = [random.randint(0, 999) for _ in range(10)]
 class BasePredict:
     def __init__(self):
         self.model = None
