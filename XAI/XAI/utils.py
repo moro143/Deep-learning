@@ -6,12 +6,10 @@ import cv2
 import csv
 
 def identify_important_pixels(relevance_scores, threshold=0.1):
-    # Normalize the relevance scores to be between 0 and 1
     normalized_scores = relevance_scores - np.min(relevance_scores)
     if np.max(normalized_scores) != 0:
         normalized_scores = normalized_scores / np.max(normalized_scores)
 
-    # Identify pixels that meet or exceed the threshold
     important_pixels = np.where(normalized_scores >= threshold, 1, 0)
 
     return important_pixels.astype(int)
@@ -51,7 +49,6 @@ def main_loop(dset, thresholds=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 
                         important_pixels = identify_important_pixels(inv, threshold=dt_threshold)
                         masked_image_grad_cam = np.where(heatmap >= gc_threshold, 1, 0)
 
-                        # Calculate intersections and unions
                         intersectionLG = np.logical_and(mask, masked_image_grad_cam)
                         intersectionLD = np.logical_and(mask, important_pixels)
                         intersectionDG = np.logical_and(masked_image_grad_cam, important_pixels[0])

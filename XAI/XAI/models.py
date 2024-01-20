@@ -120,13 +120,12 @@ class BasePredict:
 
         grads = tape.gradient(loss, img_tensor)[0]
 
-        # Normalize gradients
         grads = (grads - tf.reduce_min(grads)) / (tf.reduce_max(grads) - tf.reduce_min(grads))
         grads = tf.squeeze(grads).numpy()
 
-        # Convert to grayscale
         grayscale_saliency = np.dot(grads, [0.2989, 0.5870, 0.1140])
-        # Rescale to original image size
+
+
         saliency_map = cv2.resize(grayscale_saliency, (img.width, img.height))
         return saliency_map
 
