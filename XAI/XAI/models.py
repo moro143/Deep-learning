@@ -31,7 +31,18 @@ import innvestigate
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.disable_v2_behavior()
 random.seed(2023)
-rn = [random.randint(0, 999) for _ in range(10)]
+# rn = [random.randint(0, 999) for _ in range(10)]
+# 248 - Eskimo dog, husky                          (podobne psy)   
+# 249 - malamute, malemute, Alaskan malamute       (podobne psy)
+# 288 - leopard, Panthera pardus                   (podobne koty) 
+# 290 - jaguar, panther, Panthera onca, Felis onca (podobne koty)
+# 483 -	castle                                     (duże obiekty)     
+# 900 - water tower                                (duże obiekty)     
+# 644 - matchstick                                 (małe obiekty)
+# 677 - nail                                       (małe obiekty)
+# 508 - computer keyboard, keypad                  (różne)
+# 573 - go-kart                                    (różne)   
+rn = [248, 249, 288, 290 ,483 ,900 ,644 ,677 ,508, 573]
 class BasePredict:
     def __init__(self):
         self.model = None
